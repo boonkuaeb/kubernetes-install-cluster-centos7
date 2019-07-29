@@ -28,34 +28,34 @@ Set net adapter all VM as image below
 
 #### Edit Hostname file
 ```
-# kube-master1 /ect/hostname
+# kube-master1 /etc/hostname
 kubemaster1
 ```
 
 ```
-# kubenode1 /ect/hostname
+# kubenode1 /etc/hostname
 kubenode1
 ```
 
 ```
-# kubenode2 /ect/hostname
+# kubenode2 /etc/hostname
 kubenode2
 ```
 
 #### Edit `/etc/hosts` file
 
 ```
-# kube-master1 /ect/hostname
+# kube-master1 /etc/hostname
 127.0.0.1 kubemaster1
 ```
 
 ```
-# kubenode1 /ect/hostname
+# kubenode1 /etc/hostname
 127.0.0.1 kubenode1
 ```
 
 ```
-# kubenode2 /ect/hostname
+# kubenode2 /etc/hostname
 127.0.0.1 kubenode2
 ```
 
@@ -85,7 +85,7 @@ exit `/etc/fstab` file. commit out swap line.
 
 #### Install Docker
 ```
-apt-get update -y
+apt-get update
 apt-get install -y docker.io
 ```
 
@@ -109,13 +109,16 @@ apt-get update
 
 ```
 apt-get install -y kubelet kubeadm kubectl
-apt-mark hold kubelet kubeadm kubectl
 
 ```
 
 
 # Initializing your control-plane node
-use Calico network template.
+
+```
+kubeadm config images pull
+```
+
 ```
 kubeadm init --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address=172.17.8.101
 ```
@@ -142,7 +145,9 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 ### Install pod network for external communication
 ```
-kubectl apply -f https://docs.projectcalico.org/v3.8/manifests/calico.yaml
+sysctl net.bridge.bridge-nf-call-iptables=1
+
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
 
 ```
 
