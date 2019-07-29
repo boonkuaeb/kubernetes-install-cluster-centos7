@@ -1,125 +1,159 @@
-# Provision
-```bash
-vagrant up
-```
-
-```
-vagrant status
-```
+# Big Picture
+![big-picture.png](./static/big-picture.png) 
 
 ## Assumptions
+
 |Role|FQDN|IP|OS|RAM|CPU|
 |----|----|----|----|----|----|
-|Master1|kmaster1.localhost.com|192.168.99.101|CentOS 7|2G|2|
-|Node1|knode1.localhost.com|192.168.99.111|CentOS 7|1G|1|
-|Node2|knode2.localhost.com|192.168.99.111|CentOS 7|1G|1|
+|Master1|kubemaster1|172.17.8.101|Ubuntu 16|2G|2|
+|Node1|kubenode1|172.17.8.201|Ubuntu 16|1G|1|
+|Node2|kubenode2|172.17.8.202|Ubuntu 16|1G|1|
+
+
+# Provision
+
+Download image : https://sourceforge.net/projects/osboxes/files/v/vb/55-U-u/16.04/16.04.6/1604.664.7z/download
 
 
 # On both Kmaster and Kworker
-
 ## Pre-requisites 
-### Update /etc/hosts
+Set net adapter all VM as image below
+
+![](./static/adapter1.png) 
+
+![](./static/adapter2.png) 
+
+![](./static/adapter-2-config.png) 
+
+
+#### Edit Hostname file
 ```
-cat >>/etc/hosts<<EOF
-192.168.99.101 kmaster1.localhost.com kmaster1
-192.168.99.111 knode1.localhost.com knode1
-192.168.99.112 knode2.localhost.com knode2
-EOF
-
-```
-
-### Docker repository to install docker.
-```
-yum install -y -q yum-utils device-mapper-persistent-data lvm2 > /dev/null 2>&1
-yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo > /dev/null 2>&1
-yum update -y && yum install -y docker-ce-18.06.2.ce > /dev/null 2>&1
-
-mkdir /etc/docker
-cat > /etc/docker/daemon.json <<EOF
-{
-  "exec-opts": ["native.cgroupdriver=systemd"],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "100m"
-  },
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
-}
-EOF
-
-mkdir -p /etc/systemd/system/docker.service.d
-
-
-systemctl enable docker
-systemctl start docker
-
+# kube-master1 /ect/hostname
+kubemaster1
 ```
 
-### Disable SELinux
 ```
-setenforce 0
-sed -i --follow-symlinks 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
-
+# kubenode1 /ect/hostname
+kubenode1
 ```
 
-### Disable Firewall
 ```
-systemctl disable firewalld
-systemctl stop firewalld
+# kubenode2 /ect/hostname
+kubenode2
+```
+
+#### Edit `/etc/hosts` file
 
 ```
-### Disable swap
+# kube-master1 /ect/hostname
+127.0.0.1 kubemaster1
 ```
-sed -i '/swap/d' /etc/fstab
+
+```
+# kubenode1 /ect/hostname
+127.0.0.1 kubenode1
+```
+
+```
+# kubenode2 /ect/hostname
+127.0.0.1 kubenode2
+```
+
+#### Edit `/etc/network/interfaces`
+```
+# Configur enp0s8 interface
+auto enp0s8
+iface enp0s8 inet static
+      address 172.17.8.{assigned IP}
+      netmark 255.255.255.0
+```
+
+
+## Disable swap
+```
 swapoff -a
-
+```
+exit `/etc/fstab` file. commit out swap line.
+```
+#UUID=dec25862-42c7-4494-8f75-e6cc76aa65ea none            swap    sw$
 ```
 
-### Update sysctl settings for Kubernetes networking
+# Set up Kubernetes Cluster
+
+[set up reference document](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/) 
+
+
+#### Install Docker
 ```
-cat >>/etc/sysctl.d/kubernetes.conf<<EOF
-net.bridge.bridge-nf-call-ip6tables = 1
-net.bridge.bridge-nf-call-iptables = 1
+apt-get update -y
+apt-get install -y docker.io
+```
+
+#### Installing kubeadm, kubelet and kubectl
+```
+apt-get update && apt-get install -y apt-transport-https curl
+```
+
+```
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+```
+
+```
+cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
+deb https://apt.kubernetes.io/ kubernetes-xenial main
 EOF
-sysctl --system
+apt-get update
+
 
 ```
 
-# Kubernetes Setup
-### Add yum repository
-``` 
-cat >>/etc/yum.repos.d/kubernetes.repo<<EOF
-[kubernetes]
-name=Kubernetes
-baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
-        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-EOF
-
 ```
-
-### Install Kubernetes
-```
-yum install -y kubeadm kubelet kubectl
-
-```
-### Enable and Start kubelet service
-```
-systemctl enable kubelet
-systemctl start kubelet
+apt-get install -y kubelet kubeadm kubectl
+apt-mark hold kubelet kubeadm kubectl
 
 ```
 
 
-# On kmaster
-
-### Initialize Kubernetes Cluster
+# Initializing your control-plane node
+use Calico network template.
 ```
-kubeadm init --apiserver-advertise-address=192.168.99.101 --pod-network-cidr=10.244.0.0/16
+kubeadm init --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address=172.17.8.101
+```
 
+```
+kubeadm join 172.17.8.101:6443 --token dub30w.o0of5avs3dy0i0nw \
+    --discovery-token-ca-cert-hash sha256:bb0c544f4bd39d497f39c6ea223950bb2f7fbc096cbdd4e5eaef5971de861493
+
+```
+
+Root User
+```
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+```
+
+### Install pod network for external communication
+```
+kubectl apply -f https://docs.projectcalico.org/v3.8/manifests/calico.yaml
+
+```
+
+#### check POD
+```
+kubectl get pods --all-namespaces
+```
+
+#### Run join cluster on node1 and node2
+```
+kubeadm join 172.17.8.101:6443 --token dub30w.o0of5avs3dy0i0nw \
+    --discovery-token-ca-cert-hash sha256:bb0c544f4bd39d497f39c6ea223950bb2f7fbc096cbdd4e5eaef5971de861493
+
+```
+
+#### test run pod
+```
+kubectl run nginx --image=nginx
+```
+```
+kubectl get pods
 ```
